@@ -1,0 +1,11 @@
+{
+  "name": "address-count",
+  "private": true,
+  "workspaces": [
+    "node/ton"
+  ],
+  "scripts": {
+    "ton:address": "npm --workspace node/ton run ton:address",
+    "ton:pubkey": "npm --workspace node/ton run ton:pubkey"
+  }
+}
