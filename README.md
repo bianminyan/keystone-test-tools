@@ -32,15 +32,22 @@ Calculate BIP39 addresses:
 
 ```bash
 export BIP39_MNEMONIC="your mnemonic here"
-export TON_MNEMONIC="your ton mnemonic here"
-python src/address_derivation/bip39_address.py
+export BIP39_PASSPHRASE=""
+python src/address_derivation/derive_all.py --kind bip39 --size 1
 ```
 
 Calculate SLIP39 addresses:
 
 ```bash
 export SLIP39_MNEMONIC="share one\nshare two\nshare three"
-python src/address_derivation/slip39_address.py
+export SLIP39_PASSPHRASE=""
+python src/address_derivation/derive_all.py --kind slip39 --size 1
+```
+
+For real mnemonics, avoid shell history and use interactive input:
+
+```bash
+python src/address_derivation/derive_all.py --kind bip39 --prompt
 ```
 
 Calculate a TON address from an explicit mnemonic argument:

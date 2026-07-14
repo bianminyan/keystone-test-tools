@@ -31,6 +31,9 @@ chains = [
   "monero>=1.1.1",
 ]
 
+[project.scripts]
+derive-all-addresses = "address_derivation.derive_all:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
