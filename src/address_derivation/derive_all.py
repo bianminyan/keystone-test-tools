@@ -195,7 +195,10 @@ def _print_bip39_cosmos(value: object) -> None:
 
 def _print_zec(value: object) -> None:
     _show("ZEC transparent", value.transparent_address)
-    _show("ZEC unified", value.unified_address)
+    if value.unified_address:
+        _show("ZEC unified", value.unified_address)
+    else:
+        _show("ZEC unified", f"FAILED: {value.unified_address_error}")
 
 
 def derive_slip39(shares: str, passphrase: str, size: int) -> None:

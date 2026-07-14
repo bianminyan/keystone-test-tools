@@ -62,7 +62,7 @@ The BIP39 and SLIP39 modules include address calculators for BTC, ETH/EVM, SOL, 
 
 Arweave address calculation requires the Rust FFI dynamic library built from `crates/rust_rsa_ffi`.
 
-Zcash transparent address calculation is built in. Zcash unified address calculation requires `zcash_vendor_py` or a compatible local Rust Zcash helper on `PATH`.
+Zcash transparent address calculation is built in. Zcash unified address calculation requires `zcash_vendor_py`, `ZEC_UA_CMD`, or the local Keystone Rust workspace at `keystone3-firmware/rust`. ZIP32 unified address generation requires a seed of at least 32 bytes; shorter SLIP39 secrets can still produce transparent addresses, but not unified addresses.
 
 ## Security
 

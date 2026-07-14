@@ -139,6 +139,59 @@ def hash160(data: bytes) -> bytes:
     return ripemd.digest()
 
 
+def derive_zec_unified_address(seed: bytes, account: int = 0) -> str:
+    """Derive a Zcash unified address using zcash_vendor_py or a local Rust helper."""
+    if len(seed) < 32:
+        raise ValueError("ZIP 32 seeds MUST be at least 32 bytes")
+    path = f"m/32'/133'/{account}'"
+    try:
+        from zcash_vendor_py import derive_ufvk, ufvk_default_address
+    except ImportError:
+        cmd = os.environ.get("ZEC_UA_CMD")
+        seed_hex = seed.hex()
+        if cmd:
+            command = [cmd, seed_hex, path]
+        else:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+            manifest_candidates = [
+                os.path.join(project_root, "crates", "zcash_address_helper", "Cargo.toml"),
+                os.path.join(project_root, "keystone3-firmware", "rust", "Cargo.toml"),
+            ]
+            rust_manifest = next((candidate for candidate in manifest_candidates if os.path.exists(candidate)), None)
+            if rust_manifest is None:
+                raise ImportError("未找到 zcash_vendor_py 或本地 Rust ZEC helper，无法生成 UA。")
+            if rust_manifest.endswith(os.path.join("keystone3-firmware", "rust", "Cargo.toml")):
+                command = [
+                    "cargo",
+                    "run",
+                    "--quiet",
+                    "--manifest-path",
+                    rust_manifest,
+                    "-p",
+                    "app_zcash",
+                    "--example",
+                    "print_address",
+                    "--",
+                    seed_hex,
+                    path,
+                ]
+            else:
+                command = ["cargo", "run", "--quiet", "--manifest-path", rust_manifest, "--", seed_hex, path]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as exc:
+            message = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise RuntimeError(f"外部 UA 命令执行失败: {message}") from exc
+        ua_out = (result.stdout or "").strip()
+        if not ua_out:
+            raise RuntimeError("外部 UA 命令未返回任何输出")
+        return ua_out
+
+    ufvk = derive_ufvk(params="main", seed=seed, account_path=path)
+    return ufvk_default_address(ufvk, params="main")
+
+
 # 包装 cosmospy 的 seed_to_privkey 以支持 passphrase
 def seed_to_privkey_with_passphrase(mnemonic: str, path: str = "m/44'/118'/0'/0/0", passphrase: str = "") -> bytes:
     """
@@ -1611,7 +1664,12 @@ class count_zec_address:
         # BIP39 seed
         self.seed = Bip39SeedGenerator(self.mnemonic).Generate(self.passphrase)
         self.transparent_address = self._derive_transparent_address()
-        self.unified_address = self._derive_unified_address_zip32()
+        try:
+            self.unified_address = self._derive_unified_address_zip32()
+            self.unified_address_error = None
+        except Exception as exc:
+            self.unified_address = None
+            self.unified_address_error = str(exc)
 
     def _derive_addresses(self):
         t_addr = self._derive_transparent_address()
@@ -1632,67 +1690,7 @@ class count_zec_address:
           - derive_ufvk(params: str, seed: bytes, account_path: str) -> str (UFVK 编码字符串)
           - ufvk_default_address(ufvk: str, params: str) -> str (UA 编码字符串，默认第 0 个/AllAvailableKeys)
         """
-        # 延迟导入，便于在未安装时给出清晰错误
-        try:
-            from zcash_vendor_py import derive_ufvk, ufvk_default_address
-        except ImportError:
-            # 若无 Python 绑定，改为调用外部命令（用于交叉验证的独立实现）
-            # 通过环境变量 ZEC_UA_CMD 指定可执行命令。
-            # 期望该命令接受两个参数：<seed_hex> <account_path>，stdout 输出 UA 字符串。
-            cmd = os.environ.get("ZEC_UA_CMD")
-            seed_hex = self.seed.hex()
-            path = f"m/32'/133'/{self.account}'"
-
-            if not cmd:
-                rust_manifest = os.path.abspath(
-                    os.path.join(
-                        os.path.dirname(__file__),
-                        "..",
-                        "keystone3-firmware",
-                        "rust",
-                        "apps",
-                        "zcash",
-                        "Cargo.toml",
-                    )
-                )
-                if not os.path.exists(rust_manifest):
-                    raise ImportError("未找到 zcash_vendor_py，且 Rust ZEC example 不存在，无法生成 UA。")
-                cmd = [
-                    "cargo",
-                    "run",
-                    "--quiet",
-                    "--manifest-path",
-                    rust_manifest,
-                    "--example",
-                    "print_address",
-                    "--",
-                    seed_hex,
-                    path,
-                ]
-            else:
-                cmd = [cmd, seed_hex, path]
-
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-            except Exception as e:
-                raise RuntimeError(f"外部 UA 命令执行失败: {e}")
-            ua_out = (result.stdout or "").strip()
-            if not ua_out:
-                raise RuntimeError("外部 UA 命令未返回任何输出")
-            return ua_out
-
-        # ZIP32 路径：32'/133'/{account}'
-        path = f"m/32'/133'/{self.account}'"
-        # 与 Rust derive_ufvk 等价：返回 UFVK 编码字符串（uview...）
-        ufvk = derive_ufvk(params="main", seed=self.seed, account_path=path)
-        # 与 Rust ufvk.default_address(AllAvailableKeys).encode(params) 等价：返回 UA（u1...）
-        ua_addr = ufvk_default_address(ufvk, params="main")
-        return ua_addr
+        return derive_zec_unified_address(self.seed, self.account)
 
  
 if __name__ == "__main__":
