@@ -215,7 +215,7 @@ def derive_bip39(mnemonic: str, passphrase: str, size: int) -> None:
     _try_chain("BTC TEST", lambda: _print_bip39_btc_test(count_btc_address(mnemonic, passphrase, size=size), size))
     _try_chain("ETH", lambda: _print_bip39_eth(count_eth_address(mnemonic, passphrase, size=size), size))
     _try_chain("SOL", lambda: _print_sol(count_solana_address(mnemonic, passphrase, size=size), size))
-    _try_chain("AVAX", lambda: _print_avax(count_avax_address(mnemonic, passphrase, size=size), size, "bip44_address"))
+    _try_chain("AVAX", lambda: _print_avax_bip39(mnemonic, passphrase, count_avax_address(mnemonic, passphrase, size=size), size))
     _try_chain("TRON", lambda: _show_list("TRON", count_tron_address(mnemonic, passphrase, size=size).bip44_address, size))
     _try_chain("XRP", lambda: _show_list("XRP", count_xrp_address(mnemonic, passphrase, size=size).bip44_address, size))
     _try_chain("ADA", lambda: _print_bip39_ada(count_ada_address(mnemonic, passphrase, size=size), size))
@@ -260,8 +260,25 @@ def _print_sol(value: object, size: int) -> None:
     _show("SOL single-account path", value.single_account_path_address)
 
 
-def _print_avax(value: object, size: int, evm_attr: str) -> None:
-    _show_list("AVAX BIP44", getattr(value, evm_attr), size)
+def _derive_avax_c_chain(seed: bytes, size: int) -> list[str]:
+    """Derive AVAX C-Chain addresses using m/44'/60'/0'/0/x (Ethereum path)."""
+    from bip_utils import Bip44, Bip44Coins, Bip44Changes
+
+    bip44 = Bip44.FromSeed(seed, Bip44Coins.ETHEREUM).Purpose().Coin().Account(0)
+    change = bip44.Change(Bip44Changes.CHAIN_EXT)
+    return [change.AddressIndex(i).PublicKey().ToAddress() for i in range(size)]
+
+
+def _print_avax_bip39(mnemonic: str, passphrase: str, value: object, size: int) -> None:
+    from bip_utils import Bip39SeedGenerator
+
+    seed = Bip39SeedGenerator(mnemonic).Generate(passphrase)
+    _show_list("AVAX C-Chain m/44'/60'/0'/0/x", _derive_avax_c_chain(seed, size), size)
+    _show_list("AVAX X-Chain", value.avax_address, size)
+
+
+def _print_avax_slip39(seed: bytes, value: object, size: int) -> None:
+    _show_list("AVAX C-Chain m/44'/60'/0'/0/x", _derive_avax_c_chain(seed, size), size)
     _show_list("AVAX X-Chain", value.avax_address, size)
 
 
@@ -328,7 +345,7 @@ def derive_slip39(shares: str, passphrase: str, size: int) -> None:
     _try_chain("BTC TEST", lambda: _print_slip39_btc_test(count_btc_address(slip39_seed=seed, size=size), size))
     _try_chain("ETH", lambda: _print_slip39_eth(count_eth_address(slip39_seed=seed, size=size), size))
     _try_chain("SOL", lambda: _print_sol(count_solana_address(slip39_seed=seed, size=size), size))
-    _try_chain("AVAX", lambda: _print_avax(count_avax_address(slip39_seed=seed, size=size), size, "seed_slip44_address"))
+    _try_chain("AVAX", lambda: _print_avax_slip39(seed, count_avax_address(slip39_seed=seed, size=size), size))
     _try_chain("TRON", lambda: _show_list("TRON", count_trx_address(slip39_seed=seed, size=size).trx_slip39_address, size))
     _try_chain("XRP", lambda: _show_list("XRP", count_xrp_address(slip39_seed=seed, size=size).xrp_slip39_address, size))
     _try_chain("ADA", lambda: _print_slip39_ada(count_ada_address(slip39_seed=seed), size))
