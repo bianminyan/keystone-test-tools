@@ -371,7 +371,7 @@ def _print_slip39_ltc(value: object, size: int) -> None:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Derive public addresses for all supported chains.")
     parser.add_argument("--kind", choices=("bip39", "slip39"), default="bip39")
-    parser.add_argument("--size", type=int, default=1, help="number of addresses per derivation type")
+    parser.add_argument("--size", type=int, default=5, help="number of addresses per derivation type")
     parser.add_argument("--env-file", help="optional local env file, for example .env")
     parser.add_argument("--prompt", action="store_true", help="prompt for mnemonic/shares and passphrase")
     return parser.parse_args(argv)
