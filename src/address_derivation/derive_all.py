@@ -34,6 +34,87 @@ def _normalize_shares(value: str) -> str:
     return value.replace("\\n", "\n").strip()
 
 
+def _reencode_bech32(hrp: str, data: list[int]) -> str:
+    """Re‑encode bech32/bech32m data under a new HRP.
+
+    bech32 1.2.0 does not expose bech32m natively, so we inline the
+    checksum constant for witness version >= 1.
+    """
+    import bech32 as _bech32
+
+    witver = data[0]
+    const = 0x2BC830A3 if witver >= 1 else 1
+    values = _bech32.bech32_hrp_expand(hrp) + data
+    polymod = _bech32.bech32_polymod(values + [0, 0, 0, 0, 0, 0]) ^ const
+    checksum = [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
+    combined = data + checksum
+    return hrp + "1" + "".join([_bech32.CHARSET[d] for d in combined])
+
+
+def _bech32m_rehrp(addr: str, new_hrp: str) -> str:
+    """Replace the HRP of a bech32m address without verifying the checksum."""
+    import bech32 as _bech32
+
+    sep = addr.rfind("1")
+    if sep < 1:
+        return addr
+    # 5‑bit characters after the separator
+    chars = [_bech32.CHARSET.find(c) for c in addr[sep + 1 :]]
+    if any(c == -1 for c in chars) or len(chars) < 7:
+        return addr
+    # last 6 chars are the checksum; the rest is data
+    data = chars[:-6]
+    return _reencode_bech32(new_hrp, data)
+
+
+def _mainnet_to_testnet_address(addr: str) -> str:
+    """Convert a Bitcoin mainnet address string to its testnet encoding.
+
+    Keeps the same derivation (coin type 0) but re-encodes the address with
+    testnet prefixes (base58 version bytes / bech32 HRP).
+    """
+    # P2PKH (Legacy): 1... -> m... or n...
+    if addr.startswith("1"):
+        import base58 as _b58
+
+        raw = _b58.b58decode_check(addr)
+        # version byte: 0x00 (mainnet) -> 0x6f (testnet)
+        return _b58.b58encode_check(b"\x6f" + raw[1:]).decode()
+
+    # P2SH (Nested SegWit): 3... -> 2...
+    if addr.startswith("3"):
+        import base58 as _b58
+
+        raw = _b58.b58decode_check(addr)
+        # version byte: 0x05 (mainnet) -> 0xc4 (testnet)
+        return _b58.b58encode_check(b"\xc4" + raw[1:]).decode()
+
+    # bech32 / bech32m: bc1... -> tb1...
+    if addr.startswith("bc1"):
+        # Taproot (bc1p) uses bech32m which bech32 1.2.0 cannot decode natively
+        if addr.startswith("bc1p"):
+            return _bech32m_rehrp(addr, "tb")
+
+        import bech32 as _bech32
+
+        hrp, data = _bech32.bech32_decode(addr)
+        if hrp is None or data is None:
+            return addr
+        # Re‑encode: witness version 0 uses bech32, >=1 uses bech32m
+        return _reencode_bech32("tb", data)
+
+    # ltc1 / tb1 / tltc1 — already testnet or non-BTC, pass through
+    return addr
+
+
+def _bip39_addrs_to_testnet(addrs: list[str]) -> list[str]:
+    return [_mainnet_to_testnet_address(a) for a in addrs]
+
+
+def _slip39_addrs_to_testnet(addrs: list[str]) -> list[str]:
+    return [_mainnet_to_testnet_address(a) for a in addrs]
+
+
 def _print_section(title: str) -> None:
     print(f"\n---------------{title}---------------")
 
@@ -131,6 +212,7 @@ def derive_bip39(mnemonic: str, passphrase: str, size: int) -> None:
     )
 
     _try_chain("BTC", lambda: _print_bip39_btc(count_btc_address(mnemonic, passphrase, size=size), size))
+    _try_chain("BTC TEST", lambda: _print_bip39_btc_test(count_btc_address(mnemonic, passphrase, size=size), size))
     _try_chain("ETH", lambda: _print_bip39_eth(count_eth_address(mnemonic, passphrase, size=size), size))
     _try_chain("SOL", lambda: _print_sol(count_solana_address(mnemonic, passphrase, size=size), size))
     _try_chain("AVAX", lambda: _print_avax(count_avax_address(mnemonic, passphrase, size=size), size, "bip44_address"))
@@ -157,6 +239,13 @@ def _print_bip39_btc(value: object, size: int) -> None:
     _show_list("BTC BIP49 Nested SegWit", value.bip49_address, size)
     _show_list("BTC BIP84 Native SegWit", value.bip84_address, size)
     _show_list("BTC BIP86 Taproot", value.bip86_address, size)
+
+
+def _print_bip39_btc_test(value: object, size: int) -> None:
+    _show_list("BTC BIP44 Legacy", _bip39_addrs_to_testnet(value.bip44_address), size)
+    _show_list("BTC BIP49 Nested SegWit", _bip39_addrs_to_testnet(value.bip49_address), size)
+    _show_list("BTC BIP84 Native SegWit", _bip39_addrs_to_testnet(value.bip84_address), size)
+    _show_list("BTC BIP86 Taproot", _bip39_addrs_to_testnet(value.bip86_address), size)
 
 
 def _print_bip39_eth(value: object, size: int) -> None:
@@ -227,6 +316,7 @@ def derive_slip39(shares: str, passphrase: str, size: int) -> None:
 
     seed = slip39_menmonic_to_byte_seed(_normalize_shares(shares), passphrase=passphrase)
     _try_chain("BTC", lambda: _print_slip39_btc(count_btc_address(slip39_seed=seed, size=size), size))
+    _try_chain("BTC TEST", lambda: _print_slip39_btc_test(count_btc_address(slip39_seed=seed, size=size), size))
     _try_chain("ETH", lambda: _print_slip39_eth(count_eth_address(slip39_seed=seed, size=size), size))
     _try_chain("SOL", lambda: _print_sol(count_solana_address(slip39_seed=seed, size=size), size))
     _try_chain("AVAX", lambda: _print_avax(count_avax_address(slip39_seed=seed, size=size), size, "seed_slip44_address"))
@@ -252,6 +342,13 @@ def _print_slip39_btc(value: object, size: int) -> None:
     _show_list("BTC BIP49 Nested SegWit", value.seed_slip49_address, size)
     _show_list("BTC BIP84 Native SegWit", value.seed_slip84_address, size)
     _show_list("BTC BIP86 Taproot", value.seed_slip86_address, size)
+
+
+def _print_slip39_btc_test(value: object, size: int) -> None:
+    _show_list("BTC BIP44 Legacy", _slip39_addrs_to_testnet(value.seed_slip44_address), size)
+    _show_list("BTC BIP49 Nested SegWit", _slip39_addrs_to_testnet(value.seed_slip49_address), size)
+    _show_list("BTC BIP84 Native SegWit", _slip39_addrs_to_testnet(value.seed_slip84_address), size)
+    _show_list("BTC BIP86 Taproot", _slip39_addrs_to_testnet(value.seed_slip86_address), size)
 
 
 def _print_slip39_eth(value: object, size: int) -> None:
