@@ -265,10 +265,19 @@ def _print_avax(value: object, size: int, evm_attr: str) -> None:
     _show_list("AVAX X-Chain", value.avax_address, size)
 
 
+def _print_ada_by_account(label: str, records: list[dict], num_accounts: int = 5) -> None:
+    """Print ADA addresses grouped by account index, each with 5 address indexes."""
+    for i in range(num_accounts):
+        for x in range(5):
+            record = next((r for r in records if r.get("i") == i and r.get("x") == x), None)
+            if record:
+                _show(f"{label} [{record['path']}]", record["address"])
+
+
 def _print_bip39_ada(value: object, size: int) -> None:
-    _show_records("ADA Shelley", value.addresses, size)
-    _show_records("ADA Ledger/BitBox02", value.ledger_bitbox02_addresses, size)
-    _show_records("ADA Enterprise", value.enterprise_addresses, size)
+    _print_ada_by_account("ADA Shelley", value.addresses, size)
+    _print_ada_by_account("ADA Ledger/BitBox02", value.ledger_bitbox02_addresses, size)
+    _print_ada_by_account("ADA Enterprise", value.enterprise_addresses, size)
 
 
 def _print_bip39_ltc(value: object, size: int) -> None:
@@ -358,8 +367,8 @@ def _print_slip39_eth(value: object, size: int) -> None:
 
 
 def _print_slip39_ada(value: object, size: int) -> None:
-    _show_records("ADA Shelley", value.addresses, size)
-    _show_records("ADA Enterprise", value.enterprise_addresses, size)
+    _print_ada_by_account("ADA Shelley", value.addresses, size)
+    _print_ada_by_account("ADA Enterprise", value.enterprise_addresses, size)
 
 
 def _print_slip39_ltc(value: object, size: int) -> None:
